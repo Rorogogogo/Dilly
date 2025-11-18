@@ -1,7 +1,17 @@
 /* eslint-disable jsx-a11y/mouse-events-have-key-events */
 import { useStorage } from '@extension/shared';
 import { dillyStorage } from '@extension/storage';
+import { GithubWidget } from '@extension/ui';
 import { useEffect, useState } from 'react';
+
+// D with clock logo component
+const DillyLogo = ({ size = 16, color = 'white' }: { size?: number; color?: string }) => (
+  <svg style={{ width: `${size}px`, height: `${size}px` }} viewBox="0 0 24 24" fill={color}>
+    <path d="M3 2h9c5.523 0 10 4.477 10 10s-4.477 10-10 10H3V2zm9 16c3.314 0 6-2.686 6-6s-2.686-6-6-6H7v12h5z" />
+    <circle cx="12" cy="12" r="4" fill="currentColor" style={{ color: color === 'white' ? 'black' : 'white' }} />
+    <path d="M12 9v3l2 2" stroke={color} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
 
 export default function CornerWidget() {
   const state = useStorage(dillyStorage);
@@ -122,14 +132,7 @@ export default function CornerWidget() {
           e.currentTarget.style.transform = 'scale(1)';
         }}
         title="Dilly - Click to expand">
-        <svg
-          style={{ width: '24px', height: '24px', color: 'white' }}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-        </svg>
+        <DillyLogo size={24} color="white" />
       </button>
     );
   }
@@ -169,14 +172,7 @@ export default function CornerWidget() {
               borderRadius: '8px',
               backgroundColor: 'black',
             }}>
-            <svg
-              style={{ width: '16px', height: '16px', color: 'white' }}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
+            <DillyLogo size={16} color="white" />
           </div>
           <span style={{ fontSize: '14px', fontWeight: 600, color: 'black' }}>Dilly</span>
         </div>
@@ -283,6 +279,11 @@ export default function CornerWidget() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
           </svg>
         </button>
+
+        {/* GitHub Widget */}
+        <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'center' }}>
+          <GithubWidget variant="dark" />
+        </div>
       </div>
     </div>
   );
