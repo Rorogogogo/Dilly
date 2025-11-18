@@ -25,6 +25,10 @@ export type DillyStateType = {
   // Focus timer fields
   lastNonWorkFocusStart: number | null;
   awayFromWorkDuration: number;
+  // Goal and accumulated focus
+  goalTimeMinutes: number;
+  accumulatedFocusTime: number;
+  lastWorkFocusStart: number | null;
 };
 
 export type DillyStorageType = {
@@ -44,9 +48,16 @@ export type DillyStorageType = {
   checkSnoozeExpired: () => Promise<boolean>;
   // Focus timer methods
   startAwayTimer: () => Promise<void>;
+  resumeAwayTimer: () => Promise<void>;
   pauseAwayTimer: () => Promise<void>;
   resetAwayTimer: () => Promise<void>;
   getAwayDuration: () => Promise<number>;
+  // Goal and work focus methods
+  setGoalTime: (minutes: number) => Promise<void>;
+  startWorkFocusTimer: () => Promise<void>;
+  pauseWorkFocusTimer: () => Promise<void>;
+  resetWorkFocusTime: () => Promise<void>;
+  getWorkFocusDuration: () => Promise<number>;
 };
 
 const storage = createStorage<DillyStateType>(
@@ -59,6 +70,9 @@ const storage = createStorage<DillyStateType>(
     entertainmentSites: DEFAULT_ENTERTAINMENT_SITES,
     lastNonWorkFocusStart: null,
     awayFromWorkDuration: 0,
+    goalTimeMinutes: 60,
+    accumulatedFocusTime: 0,
+    lastWorkFocusStart: null,
   },
   {
     storageEnum: StorageEnum.Local,
@@ -156,12 +170,20 @@ export const dillyStorage: DillyStorageType = {
     return false;
   },
 
-  // Start tracking away time
+  // Start tracking away time (resets accumulated time)
   startAwayTimer: async () => {
     await storage.set(prev => ({
       ...prev,
       lastNonWorkFocusStart: Date.now(),
       awayFromWorkDuration: 0,
+    }));
+  },
+
+  // Resume tracking away time (keeps accumulated time)
+  resumeAwayTimer: async () => {
+    await storage.set(prev => ({
+      ...prev,
+      lastNonWorkFocusStart: Date.now(),
     }));
   },
 
@@ -194,5 +216,52 @@ export const dillyStorage: DillyStorageType = {
       return state.awayFromWorkDuration;
     }
     return state.awayFromWorkDuration + (Date.now() - state.lastNonWorkFocusStart);
+  },
+
+  // Set goal time in minutes
+  setGoalTime: async (minutes: number) => {
+    await storage.set(prev => ({
+      ...prev,
+      goalTimeMinutes: minutes,
+    }));
+  },
+
+  // Start work focus timer
+  startWorkFocusTimer: async () => {
+    await storage.set(prev => ({
+      ...prev,
+      lastWorkFocusStart: Date.now(),
+    }));
+  },
+
+  // Pause work focus timer (save accumulated time)
+  pauseWorkFocusTimer: async () => {
+    const state = await storage.get();
+    if (state.lastWorkFocusStart) {
+      const elapsed = Date.now() - state.lastWorkFocusStart;
+      await storage.set(prev => ({
+        ...prev,
+        accumulatedFocusTime: prev.accumulatedFocusTime + elapsed,
+        lastWorkFocusStart: null,
+      }));
+    }
+  },
+
+  // Reset work focus time
+  resetWorkFocusTime: async () => {
+    await storage.set(prev => ({
+      ...prev,
+      accumulatedFocusTime: 0,
+      lastWorkFocusStart: null,
+    }));
+  },
+
+  // Get current work focus duration in milliseconds
+  getWorkFocusDuration: async () => {
+    const state = await storage.get();
+    if (!state.lastWorkFocusStart) {
+      return state.accumulatedFocusTime;
+    }
+    return state.accumulatedFocusTime + (Date.now() - state.lastWorkFocusStart);
   },
 };

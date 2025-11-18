@@ -27,7 +27,11 @@ const SidePanel = () => {
   const [newSite, setNewSite] = useState('');
   const [currentTabUrl, setCurrentTabUrl] = useState('');
   const [awayDuration, setAwayDuration] = useState(0);
+  const [focusDuration, setFocusDuration] = useState(0);
+  const [goalTimeInput, setGoalTimeInput] = useState('60');
   const [showSettings, setShowSettings] = useState(false);
+  const [snoozeRemaining, setSnoozeRemaining] = useState<string | null>(null);
+  const [showCelebration, setShowCelebration] = useState(false);
 
   // Get current tab URL and track changes
   useEffect(() => {
@@ -64,24 +68,7 @@ const SidePanel = () => {
     };
   }, []);
 
-  // Poll away duration
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      const duration = await dillyStorage.getAwayDuration();
-      setAwayDuration(duration);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Check snooze expiration
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      await dillyStorage.checkSnoozeExpired();
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Determine if on work site
+  // Determine if on work site (must be before effects that use it)
   const isOnWorkSite = useMemo(() => {
     if (!state.targetUrl || !currentTabUrl) return true;
     try {
@@ -93,11 +80,82 @@ const SidePanel = () => {
     }
   }, [currentTabUrl, state.targetUrl]);
 
-  // Check if snoozed
+  // Check if snoozed (must be before effects that use it)
   const isSnoozed = state.isSnoozed && state.snoozeUntil && Date.now() < state.snoozeUntil;
+
+  // Poll away duration
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const duration = await dillyStorage.getAwayDuration();
+      setAwayDuration(duration);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Track focus duration when on work site (using storage)
+  useEffect(() => {
+    if (isOnWorkSite && state.isNaggerActive && !isSnoozed) {
+      // Start focus timer if not already started
+      if (!state.lastWorkFocusStart) {
+        dillyStorage.startWorkFocusTimer();
+      }
+    } else if (!isOnWorkSite && state.isNaggerActive && !isSnoozed) {
+      // Pause when leaving work site
+      if (state.lastWorkFocusStart) {
+        dillyStorage.pauseWorkFocusTimer();
+      }
+    }
+  }, [isOnWorkSite, state.isNaggerActive, state.lastWorkFocusStart, isSnoozed]);
+
+  // Poll focus duration from storage
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const duration = await dillyStorage.getWorkFocusDuration();
+      setFocusDuration(duration);
+
+      // Auto-stop when goal reached
+      if (state.isNaggerActive && duration >= state.goalTimeMinutes * 60000) {
+        await dillyStorage.stopNagger();
+        setShowCelebration(true);
+        // Send message to show celebration on work page
+        chrome.runtime.sendMessage({ type: 'SHOW_CELEBRATION', goalMinutes: state.goalTimeMinutes });
+        // Auto-hide celebration after 5 seconds
+        setTimeout(() => setShowCelebration(false), 5000);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [state.isNaggerActive, state.goalTimeMinutes]);
+
+  // Check snooze expiration and update snooze remaining
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      await dillyStorage.checkSnoozeExpired();
+
+      // Update snooze remaining display
+      if (state.isSnoozed && state.snoozeUntil) {
+        const remaining = state.snoozeUntil - Date.now();
+        if (remaining > 0) {
+          const minutes = Math.floor(remaining / 60000);
+          const seconds = Math.floor((remaining % 60000) / 1000);
+          setSnoozeRemaining(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+        } else {
+          setSnoozeRemaining(null);
+        }
+      } else {
+        setSnoozeRemaining(null);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [state.isSnoozed, state.snoozeUntil]);
+
+  // Show snooze mode if: nagger active AND snoozed AND not showing settings
+  const showSnoozeMode = state.isNaggerActive && isSnoozed && !showSettings;
 
   // Show nagging mode if: nagger active AND not on work site AND not snoozed
   const showNaggingMode = state.isNaggerActive && !isOnWorkSite && !isSnoozed && !showSettings;
+
+  // Show focus mode if: nagger active AND on work site AND not snoozed AND not showing settings
+  const showFocusMode = state.isNaggerActive && isOnWorkSite && !isSnoozed && !showSettings;
 
   // Format duration
   const formatDuration = (ms: number) => {
@@ -105,16 +163,6 @@ const SidePanel = () => {
     const seconds = Math.floor((ms % 60000) / 1000);
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
-
-  // Get snooze remaining
-  const getSnoozeRemaining = () => {
-    if (!state.isSnoozed || !state.snoozeUntil) return null;
-    const remaining = state.snoozeUntil - Date.now();
-    if (remaining <= 0) return null;
-    return formatDuration(remaining);
-  };
-
-  const snoozeRemaining = getSnoozeRemaining();
 
   // Handlers
   const handleSaveUrl = async () => {
@@ -132,6 +180,14 @@ const SidePanel = () => {
       alert('Please set a target URL first!');
       return;
     }
+
+    if (!state.isNaggerActive) {
+      // Starting - set goal time and reset focus time
+      const goalMins = parseInt(goalTimeInput) || 60;
+      await dillyStorage.setGoalTime(goalMins);
+      await dillyStorage.resetWorkFocusTime();
+    }
+
     await dillyStorage.toggleNagger();
   };
 
@@ -154,6 +210,198 @@ const SidePanel = () => {
       await chrome.tabs.create({ url: state.targetUrl, active: true });
     }
   };
+
+  // Celebration UI
+  if (showCelebration) {
+    return (
+      <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-yellow-400 via-orange-500 to-pink-500 p-6 text-white">
+        {/* Confetti particles */}
+        <div className="pointer-events-none absolute inset-0">
+          {[...Array(50)].map((_, i) => (
+            <div
+              key={i}
+              className="animate-confetti absolute"
+              style={{
+                left: `${Math.random() * 100}%`,
+                top: `-10%`,
+                animationDelay: `${Math.random() * 3}s`,
+                animationDuration: `${3 + Math.random() * 2}s`,
+              }}>
+              <div
+                style={{
+                  width: `${8 + Math.random() * 8}px`,
+                  height: `${8 + Math.random() * 8}px`,
+                  backgroundColor: [
+                    '#ff6b6b',
+                    '#4ecdc4',
+                    '#45b7d1',
+                    '#96ceb4',
+                    '#ffeaa7',
+                    '#dfe6e9',
+                    '#fd79a8',
+                    '#a29bfe',
+                  ][Math.floor(Math.random() * 8)],
+                  borderRadius: Math.random() > 0.5 ? '50%' : '0',
+                  transform: `rotate(${Math.random() * 360}deg)`,
+                }}
+              />
+            </div>
+          ))}
+        </div>
+
+        {/* Main content */}
+        <div className="relative z-10 text-center">
+          <div className="mb-6 text-8xl">🎉</div>
+          <h1 className="mb-4 text-4xl font-bold">Goal Reached!</h1>
+          <p className="mb-8 text-xl text-white/90">You worked for {formatDuration(state.goalTimeMinutes * 60000)}</p>
+          <p className="text-lg text-white/70">Great job staying focused!</p>
+        </div>
+
+        {/* Close button */}
+        <button
+          onClick={() => setShowCelebration(false)}
+          className="relative z-10 mt-8 rounded-lg bg-white/20 px-6 py-3 font-medium transition-colors hover:bg-white/30">
+          Dismiss
+        </button>
+
+        <style>{`
+          @keyframes confetti-fall {
+            0% {
+              transform: translateY(0) rotate(0deg);
+              opacity: 1;
+            }
+            100% {
+              transform: translateY(100vh) rotate(720deg);
+              opacity: 0;
+            }
+          }
+          .animate-confetti {
+            animation: confetti-fall linear forwards;
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // Snooze Mode UI
+  if (showSnoozeMode) {
+    return (
+      <div className="flex min-h-screen flex-col bg-blue-500 p-6 text-white">
+        {/* Header */}
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20">
+              <DillyLogo size={20} />
+            </div>
+            <span className="text-lg font-semibold">Dilly</span>
+          </div>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="rounded-lg bg-white/10 p-2 text-white/70 transition-colors hover:bg-white/20 hover:text-white">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Main Content */}
+        <div className="flex flex-1 flex-col items-center justify-center text-center">
+          {/* Sleeping Face */}
+          <div className="mb-6 text-8xl">😴</div>
+
+          <h1 className="mb-2 text-2xl font-bold">Taking a break</h1>
+          <p className="mb-6 text-white/80">Snooze ends in</p>
+
+          <div className="rounded-2xl bg-white/20 px-8 py-6">
+            <p className="font-mono text-4xl font-bold">{snoozeRemaining || '0:00'}</p>
+          </div>
+
+          <button
+            onClick={() => dillyStorage.clearSnooze()}
+            className="mt-6 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium transition-colors hover:bg-white/20">
+            End break early
+          </button>
+        </div>
+
+        {/* Footer */}
+        <div className="mt-auto flex justify-center border-t border-white/20 pt-4">
+          <GithubWidget variant="overlay" />
+        </div>
+      </div>
+    );
+  }
+
+  // Focus Mode UI (on work site)
+  if (showFocusMode) {
+    return (
+      <div className="flex min-h-screen flex-col bg-white p-6">
+        {/* Header */}
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100">
+              <svg className="h-5 w-5 text-green-600" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3 2h9c5.523 0 10 4.477 10 10s-4.477 10-10 10H3V2zm9 16c3.314 0 6-2.686 6-6s-2.686-6-6-6H7v12h5z" />
+                <circle cx="12" cy="12" r="4" fill="white" />
+                <path
+                  d="M12 9v3l2 2"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+            <span className="text-lg font-semibold text-black">Dilly</span>
+          </div>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="rounded-lg bg-gray-100 p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-black">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Main Content */}
+        <div className="flex flex-1 flex-col items-center justify-center text-center">
+          {/* Smile Face */}
+          <div className="mb-6 text-8xl">😊</div>
+
+          <h1 className="mb-2 text-2xl font-bold text-black">Great job!</h1>
+          <p className="mb-6 text-gray-500">You&apos;re focused and working</p>
+
+          <div className="rounded-2xl bg-green-50 px-8 py-6">
+            <p className="mb-1 text-sm font-medium text-green-600">Focus Time</p>
+            <p className="font-mono text-4xl font-bold text-green-700">{formatDuration(focusDuration)}</p>
+            <p className="mt-2 text-sm text-green-600">Goal: {formatDuration(state.goalTimeMinutes * 60000)}</p>
+            {/* Progress bar */}
+            <div className="mt-3 h-2 w-full rounded-full bg-green-200">
+              <div
+                className="h-2 rounded-full bg-green-600 transition-all"
+                style={{ width: `${Math.min(100, (focusDuration / (state.goalTimeMinutes * 60000)) * 100)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="mt-auto flex justify-center border-t border-gray-100 pt-4">
+          <GithubWidget variant="light" />
+        </div>
+      </div>
+    );
+  }
 
   // Nagging Mode UI
   if (showNaggingMode) {
@@ -190,9 +438,15 @@ const SidePanel = () => {
 
         {/* Main Content */}
         <div className="flex flex-1 flex-col items-center justify-center text-center">
-          <h1 className="mb-4 text-4xl font-bold">GO BACK TO WORK</h1>
+          {/* Angry Face */}
+          <div className="mb-6 text-8xl">😠</div>
+
+          <h1 className="mb-4 text-4xl font-bold">GO BACK TO WORK!!!</h1>
           <p className="mb-2 text-lg text-white/80">You should be on {targetHostname}</p>
-          <p className="mb-8 font-mono text-2xl">Away for {formatDuration(awayDuration)}</p>
+          <div className="mb-8">
+            <p className="mb-1 text-sm text-white/60">Next nag in</p>
+            <p className="font-mono text-3xl">{formatDuration(Math.max(0, 60000 - awayDuration))}</p>
+          </div>
 
           <button
             onClick={handleGoToWork}
@@ -285,6 +539,24 @@ const SidePanel = () => {
         )}
       </div>
 
+      {/* Goal Time - only show when not active */}
+      {!state.isNaggerActive && (
+        <div className="mb-4">
+          <span className="mb-2 block text-xs font-medium uppercase tracking-wider text-gray-500">Work Goal</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={goalTimeInput}
+              onChange={e => setGoalTimeInput(e.target.value)}
+              min="1"
+              max="480"
+              className="w-20 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-black placeholder-gray-400 transition-colors focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+            />
+            <span className="text-sm text-gray-500">minutes</span>
+          </div>
+        </div>
+      )}
+
       {/* Start/Stop Button */}
       <button
         onClick={handleToggleNagger}
@@ -298,14 +570,14 @@ const SidePanel = () => {
             <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
               <rect x="6" y="6" width="12" height="12" rx="1" />
             </svg>
-            Stop Nagger
+            Stop Working
           </>
         ) : (
           <>
             <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
               <path d="M8 5v14l11-7z" />
             </svg>
-            Start Nagger
+            Start Working
           </>
         )}
       </button>
