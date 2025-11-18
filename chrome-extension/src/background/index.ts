@@ -8,6 +8,10 @@ const CHECK_INTERVAL_MINUTES = 10;
 const FOCUS_CHECK_ALARM = 'dilly-focus-check';
 const AWAY_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
+// Track previous state to avoid redundant operations
+let previousSnoozed = false;
+let previousNaggerActive = false;
+
 // Helper to get root domain
 const getRootDomain = (hostname: string): string => {
   const parts = hostname.replace(/^www\./, '').split('.');
@@ -85,7 +89,6 @@ const handleTabFocusChange = async (url: string | undefined): Promise<void> => {
   if (state.isSnoozed && state.snoozeUntil && Date.now() < state.snoozeUntil) {
     await dillyStorage.pauseAwayTimer();
     await chrome.alarms.clear(FOCUS_CHECK_ALARM);
-    console.log('[Dilly] Snoozed, pausing focus timer');
     return;
   }
 
@@ -95,13 +98,11 @@ const handleTabFocusChange = async (url: string | undefined): Promise<void> => {
     // User returned to work - reset timer
     await dillyStorage.resetAwayTimer();
     await chrome.alarms.clear(FOCUS_CHECK_ALARM);
-    console.log('[Dilly] On work tab, timer reset');
   } else {
     // User is on non-work tab - start/continue timer
     const currentState = await dillyStorage.get();
     if (!currentState.lastNonWorkFocusStart) {
       await dillyStorage.startAwayTimer();
-      console.log('[Dilly] Started away timer');
     }
 
     // Create alarm to check progress every minute
@@ -239,18 +240,31 @@ const updateAlarm = async (): Promise<void> => {
 
 // Listen for storage changes
 dillyStorage.subscribe(async () => {
-  updateAlarm();
+  const state = await dillyStorage.get();
+
+  // Only update alarm if nagger state changed
+  if (state.isNaggerActive !== previousNaggerActive) {
+    previousNaggerActive = state.isNaggerActive;
+    await updateAlarm();
+  }
 
   // Handle snooze state changes for focus timer
-  const state = await dillyStorage.get();
-  if (state.isSnoozed) {
-    await dillyStorage.pauseAwayTimer();
-    await chrome.alarms.clear(FOCUS_CHECK_ALARM);
-  } else {
-    // Snooze ended - check current focus state
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.url) {
-      await handleTabFocusChange(tab.url);
+  const currentSnoozed = !!(state.isSnoozed && state.snoozeUntil && Date.now() < state.snoozeUntil);
+
+  if (currentSnoozed !== previousSnoozed) {
+    previousSnoozed = currentSnoozed;
+
+    if (currentSnoozed) {
+      await dillyStorage.pauseAwayTimer();
+      await chrome.alarms.clear(FOCUS_CHECK_ALARM);
+      console.log('[Dilly] Snoozed, pausing focus timer');
+    } else {
+      // Snooze ended - check current focus state
+      console.log('[Dilly] Snooze ended, resuming focus timer');
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.url) {
+        await handleTabFocusChange(tab.url);
+      }
     }
   }
 });
@@ -270,7 +284,6 @@ chrome.windows.onFocusChanged.addListener(async windowId => {
   if (windowId === chrome.windows.WINDOW_ID_NONE) {
     // All windows lost focus (user switched to another app) - pause timer
     await dillyStorage.pauseAwayTimer();
-    console.log('[Dilly] Browser lost focus, pausing timer');
     return;
   }
 
