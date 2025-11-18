@@ -108,10 +108,10 @@ export default function CornerWidget() {
           alignItems: 'center',
           justifyContent: 'center',
           borderRadius: '16px',
-          background: 'linear-gradient(to bottom right, #fbbf24, #f97316)',
+          backgroundColor: 'black',
           border: 'none',
           cursor: 'pointer',
-          boxShadow: '0 10px 15px -3px rgba(249, 115, 22, 0.3)',
+          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)',
           transition: 'all 0.2s',
           fontFamily: 'system-ui, -apple-system, sans-serif',
         }}
@@ -144,9 +144,9 @@ export default function CornerWidget() {
         width: '288px',
         overflow: 'hidden',
         borderRadius: '16px',
-        border: '1px solid rgba(39, 39, 42, 0.5)',
-        backgroundColor: 'rgba(9, 9, 11, 0.95)',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+        border: '1px solid #e5e7eb',
+        backgroundColor: 'white',
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
         fontFamily: 'system-ui, -apple-system, sans-serif',
       }}>
       {/* Header */}
@@ -155,7 +155,7 @@ export default function CornerWidget() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          borderBottom: '1px solid rgba(39, 39, 42, 0.5)',
+          borderBottom: '1px solid #f3f4f6',
           padding: '12px 16px',
         }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -167,8 +167,7 @@ export default function CornerWidget() {
               alignItems: 'center',
               justifyContent: 'center',
               borderRadius: '8px',
-              background: 'linear-gradient(to bottom right, #fbbf24, #f97316)',
-              boxShadow: '0 4px 6px -1px rgba(249, 115, 22, 0.2)',
+              backgroundColor: 'black',
             }}>
             <svg
               style={{ width: '16px', height: '16px', color: 'white' }}
@@ -179,7 +178,7 @@ export default function CornerWidget() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
           </div>
-          <span style={{ fontSize: '14px', fontWeight: 600, color: 'white' }}>Dilly</span>
+          <span style={{ fontSize: '14px', fontWeight: 600, color: 'black' }}>Dilly</span>
         </div>
         <button
           onClick={() => setIsMinimized(true)}
@@ -192,17 +191,17 @@ export default function CornerWidget() {
             borderRadius: '6px',
             border: 'none',
             background: 'transparent',
-            color: '#71717a',
+            color: '#9ca3af',
             cursor: 'pointer',
             transition: 'all 0.2s',
           }}
           onMouseOver={e => {
-            e.currentTarget.style.backgroundColor = '#27272a';
-            e.currentTarget.style.color = '#d4d4d8';
+            e.currentTarget.style.backgroundColor = '#f3f4f6';
+            e.currentTarget.style.color = 'black';
           }}
           onMouseOut={e => {
             e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.color = '#71717a';
+            e.currentTarget.style.color = '#9ca3af';
           }}
           title="Minimize">
           <svg
@@ -218,8 +217,8 @@ export default function CornerWidget() {
 
       {/* Content */}
       <div style={{ padding: '16px' }}>
-        <p style={{ marginBottom: '12px', fontSize: '14px', color: '#a1a1aa' }}>
-          Time to focus on <span style={{ fontWeight: 500, color: '#fbbf24' }}>{targetHostname}</span>
+        <p style={{ marginBottom: '12px', fontSize: '14px', color: '#6b7280' }}>
+          Time to focus on <span style={{ fontWeight: 500, color: 'black' }}>{targetHostname}</span>
         </p>
 
         {timeRemaining && (
@@ -230,20 +229,20 @@ export default function CornerWidget() {
               alignItems: 'center',
               gap: '8px',
               borderRadius: '8px',
-              backgroundColor: 'rgba(24, 24, 27, 0.5)',
+              backgroundColor: '#f9fafb',
               padding: '8px 12px',
-              boxShadow: 'inset 0 0 0 1px #27272a',
+              border: '1px solid #e5e7eb',
             }}>
             <svg
-              style={{ width: '14px', height: '14px', color: '#71717a' }}
+              style={{ width: '14px', height: '14px', color: '#9ca3af' }}
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
               strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span style={{ fontSize: '12px', color: '#71717a' }}>Snooze ends in</span>
-            <span style={{ marginLeft: 'auto', fontFamily: 'monospace', fontSize: '12px', color: '#fbbf24' }}>
+            <span style={{ fontSize: '12px', color: '#6b7280' }}>Snooze ends in</span>
+            <span style={{ marginLeft: 'auto', fontFamily: 'monospace', fontSize: '12px', color: 'black' }}>
               {timeRemaining}
             </span>
           </div>
@@ -258,21 +257,21 @@ export default function CornerWidget() {
             justifyContent: 'center',
             gap: '8px',
             borderRadius: '12px',
-            background: 'linear-gradient(to right, #f59e0b, #f97316)',
+            backgroundColor: 'black',
             padding: '10px 16px',
             fontSize: '14px',
             fontWeight: 600,
             color: 'white',
             border: 'none',
             cursor: 'pointer',
-            boxShadow: '0 10px 15px -3px rgba(249, 115, 22, 0.25)',
+            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.25)',
             transition: 'all 0.2s',
           }}
           onMouseOver={e => {
-            e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(249, 115, 22, 0.4)';
+            e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.4)';
           }}
           onMouseOut={e => {
-            e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(249, 115, 22, 0.25)';
+            e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.25)';
           }}>
           Go to Work
           <svg

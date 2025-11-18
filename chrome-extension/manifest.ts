@@ -39,9 +39,12 @@ const manifest = {
   },
   action: {
     default_popup: 'popup/index.html',
-    default_icon: 'icon-34.png',
+    default_icon: 'icon-128.png',
   },
   icons: {
+    '16': 'icon-128.png',
+    '32': 'icon-128.png',
+    '48': 'icon-128.png',
     '128': 'icon-128.png',
   },
   content_scripts: [

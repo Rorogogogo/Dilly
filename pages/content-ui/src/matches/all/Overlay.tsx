@@ -1,6 +1,7 @@
 /* eslint-disable jsx-a11y/mouse-events-have-key-events */
 import { useStorage } from '@extension/shared';
 import { dillyStorage } from '@extension/storage';
+import { GithubWidget } from '@extension/ui';
 import { useEffect, useRef } from 'react';
 
 export default function Overlay() {
@@ -182,6 +183,11 @@ export default function Overlay() {
           <br />
           <span style={{ color: 'rgba(255, 255, 255, 0.7)' }}>Use the Dilly popup to snooze if you need a break.</span>
         </p>
+
+        {/* GitHub link */}
+        <div style={{ marginTop: '24px' }}>
+          <GithubWidget variant="overlay" />
+        </div>
       </div>
     </div>
   );

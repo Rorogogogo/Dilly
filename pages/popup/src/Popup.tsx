@@ -1,7 +1,7 @@
 import '@src/Popup.css';
 import { useStorage, withErrorBoundary, withSuspense } from '@extension/shared';
 import { dillyStorage } from '@extension/storage';
-import { ErrorDisplay, LoadingSpinner } from '@extension/ui';
+import { ErrorDisplay, GithubWidget, LoadingSpinner } from '@extension/ui';
 import { useState } from 'react';
 
 const Popup = () => {
@@ -197,6 +197,11 @@ const Popup = () => {
             </ul>
           )}
         </div>
+      </div>
+
+      {/* Footer */}
+      <div className="mt-4 flex justify-center border-t border-gray-100 pt-4">
+        <GithubWidget variant="light" />
       </div>
     </div>
   );
