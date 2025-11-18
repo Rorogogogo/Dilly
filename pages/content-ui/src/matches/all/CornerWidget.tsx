@@ -282,7 +282,7 @@ export default function CornerWidget() {
 
         {/* GitHub Widget */}
         <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'center' }}>
-          <GithubWidget variant="dark" />
+          <GithubWidget variant="content-light" />
         </div>
       </div>
     </div>
