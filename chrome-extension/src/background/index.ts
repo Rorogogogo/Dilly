@@ -303,6 +303,11 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[Dilly] Extension installed');
   updateAlarm();
+
+  // Set side panel to open on action click
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(error => {
+    console.error('[Dilly] Side panel setup error:', error);
+  });
 });
 
 // Also initialize on startup (for when browser restarts)
