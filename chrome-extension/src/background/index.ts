@@ -4,6 +4,10 @@ import { dillyStorage } from '@extension/storage';
 const ALARM_NAME = 'dilly-check-work-tab';
 const CHECK_INTERVAL_MINUTES = 10;
 
+// Focus timer constants
+const FOCUS_CHECK_ALARM = 'dilly-focus-check';
+const AWAY_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+
 // Helper to get root domain
 const getRootDomain = (hostname: string): string => {
   const parts = hostname.replace(/^www\./, '').split('.');
@@ -56,8 +60,132 @@ const openWorkTab = async (): Promise<void> => {
   console.log('[Dilly] Opened work tab:', state.targetUrl);
 };
 
+// Check if URL is a work URL
+const isWorkUrl = (url: string, targetUrl: string): boolean => {
+  try {
+    const urlHostname = new URL(url).hostname;
+    const targetHostname = new URL(targetUrl).hostname;
+    return getRootDomain(urlHostname) === getRootDomain(targetHostname);
+  } catch {
+    return false;
+  }
+};
+
+// Handle tab focus change
+const handleTabFocusChange = async (url: string | undefined): Promise<void> => {
+  const state = await dillyStorage.get();
+
+  if (!state.isNaggerActive || !state.targetUrl) {
+    await dillyStorage.resetAwayTimer();
+    await chrome.alarms.clear(FOCUS_CHECK_ALARM);
+    return;
+  }
+
+  // Check if snoozed - pause timer
+  if (state.isSnoozed && state.snoozeUntil && Date.now() < state.snoozeUntil) {
+    await dillyStorage.pauseAwayTimer();
+    await chrome.alarms.clear(FOCUS_CHECK_ALARM);
+    console.log('[Dilly] Snoozed, pausing focus timer');
+    return;
+  }
+
+  const isOnWork = url ? isWorkUrl(url, state.targetUrl) : false;
+
+  if (isOnWork) {
+    // User returned to work - reset timer
+    await dillyStorage.resetAwayTimer();
+    await chrome.alarms.clear(FOCUS_CHECK_ALARM);
+    console.log('[Dilly] On work tab, timer reset');
+  } else {
+    // User is on non-work tab - start/continue timer
+    const currentState = await dillyStorage.get();
+    if (!currentState.lastNonWorkFocusStart) {
+      await dillyStorage.startAwayTimer();
+      console.log('[Dilly] Started away timer');
+    }
+
+    // Create alarm to check progress every minute
+    const existingAlarm = await chrome.alarms.get(FOCUS_CHECK_ALARM);
+    if (!existingAlarm) {
+      chrome.alarms.create(FOCUS_CHECK_ALARM, {
+        delayInMinutes: 1,
+        periodInMinutes: 1,
+      });
+    }
+  }
+};
+
+// Check away duration and trigger notification if threshold reached
+const checkAwayDuration = async (): Promise<void> => {
+  const state = await dillyStorage.get();
+
+  if (!state.isNaggerActive || !state.targetUrl) return;
+
+  // Check snooze
+  if (state.isSnoozed && state.snoozeUntil && Date.now() < state.snoozeUntil) {
+    return;
+  }
+
+  const awayDuration = await dillyStorage.getAwayDuration();
+
+  if (awayDuration >= AWAY_THRESHOLD_MS) {
+    console.log('[Dilly] Away for 5 minutes, showing reminder');
+    await showWorkReminder();
+    await dillyStorage.resetAwayTimer();
+    await chrome.alarms.clear(FOCUS_CHECK_ALARM);
+  }
+};
+
+// Show notification and open/focus work tab
+const showWorkReminder = async (): Promise<void> => {
+  const state = await dillyStorage.get();
+
+  // Show notification
+  try {
+    const targetHostname = new URL(state.targetUrl).hostname;
+    chrome.notifications.create('dilly-work-reminder', {
+      type: 'basic',
+      iconUrl: 'icon-128.png',
+      title: 'Time to Work!',
+      message: `You've been away from ${targetHostname} for 5 minutes`,
+      priority: 2,
+    });
+  } catch {
+    chrome.notifications.create('dilly-work-reminder', {
+      type: 'basic',
+      iconUrl: 'icon-128.png',
+      title: 'Time to Work!',
+      message: "You've been away from work for 5 minutes",
+      priority: 2,
+    });
+  }
+
+  // Find and focus existing work tab, or create new one
+  const tabs = await chrome.tabs.query({});
+  const workTab = tabs.find(tab => tab.url && isWorkUrl(tab.url, state.targetUrl));
+
+  if (workTab && workTab.id) {
+    // Focus existing work tab
+    await chrome.tabs.update(workTab.id, { active: true });
+    if (workTab.windowId) {
+      await chrome.windows.update(workTab.windowId, { focused: true });
+    }
+    console.log('[Dilly] Focused existing work tab');
+  } else {
+    // Create new work tab
+    await chrome.tabs.create({ url: state.targetUrl });
+    console.log('[Dilly] Created new work tab');
+  }
+};
+
 // Handle alarm
 chrome.alarms.onAlarm.addListener(async alarm => {
+  // Handle focus check alarm
+  if (alarm.name === FOCUS_CHECK_ALARM) {
+    await checkAwayDuration();
+    return;
+  }
+
   if (alarm.name !== ALARM_NAME) return;
 
   console.log('[Dilly] Alarm triggered, checking for work tab');
@@ -110,8 +238,65 @@ const updateAlarm = async (): Promise<void> => {
 };
 
 // Listen for storage changes
-dillyStorage.subscribe(() => {
+dillyStorage.subscribe(async () => {
   updateAlarm();
+
+  // Handle snooze state changes for focus timer
+  const state = await dillyStorage.get();
+  if (state.isSnoozed) {
+    await dillyStorage.pauseAwayTimer();
+    await chrome.alarms.clear(FOCUS_CHECK_ALARM);
+  } else {
+    // Snooze ended - check current focus state
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.url) {
+      await handleTabFocusChange(tab.url);
+    }
+  }
+});
+
+// Track tab focus changes
+chrome.tabs.onActivated.addListener(async activeInfo => {
+  try {
+    const tab = await chrome.tabs.get(activeInfo.tabId);
+    await handleTabFocusChange(tab.url);
+  } catch {
+    // Tab might have been closed
+  }
+});
+
+// Track window focus changes
+chrome.windows.onFocusChanged.addListener(async windowId => {
+  if (windowId === chrome.windows.WINDOW_ID_NONE) {
+    // All windows lost focus (user switched to another app) - pause timer
+    await dillyStorage.pauseAwayTimer();
+    console.log('[Dilly] Browser lost focus, pausing timer');
+    return;
+  }
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, windowId });
+    if (tab?.url) {
+      await handleTabFocusChange(tab.url);
+    }
+  } catch {
+    // Window might have been closed
+  }
+});
+
+// Track URL changes in existing tabs
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
+  if (!changeInfo.url) return;
+
+  // Check if this tab is the active tab
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.active) {
+      await handleTabFocusChange(tab.url);
+    }
+  } catch {
+    // Tab might have been closed
+  }
 });
 
 // Initialize on load

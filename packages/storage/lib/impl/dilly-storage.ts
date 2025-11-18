@@ -22,6 +22,9 @@ export type DillyStateType = {
   isSnoozed: boolean;
   snoozeUntil: number | null;
   entertainmentSites: string[];
+  // Focus timer fields
+  lastNonWorkFocusStart: number | null;
+  awayFromWorkDuration: number;
 };
 
 export type DillyStorageType = {
@@ -39,6 +42,11 @@ export type DillyStorageType = {
   isOnTargetDomain: (hostname: string) => Promise<boolean>;
   isEntertainmentSite: (hostname: string) => Promise<boolean>;
   checkSnoozeExpired: () => Promise<boolean>;
+  // Focus timer methods
+  startAwayTimer: () => Promise<void>;
+  pauseAwayTimer: () => Promise<void>;
+  resetAwayTimer: () => Promise<void>;
+  getAwayDuration: () => Promise<number>;
 };
 
 const storage = createStorage<DillyStateType>(
@@ -49,6 +57,8 @@ const storage = createStorage<DillyStateType>(
     isSnoozed: false,
     snoozeUntil: null,
     entertainmentSites: DEFAULT_ENTERTAINMENT_SITES,
+    lastNonWorkFocusStart: null,
+    awayFromWorkDuration: 0,
   },
   {
     storageEnum: StorageEnum.Local,
@@ -144,5 +154,45 @@ export const dillyStorage: DillyStorageType = {
       return true;
     }
     return false;
+  },
+
+  // Start tracking away time
+  startAwayTimer: async () => {
+    await storage.set(prev => ({
+      ...prev,
+      lastNonWorkFocusStart: Date.now(),
+      awayFromWorkDuration: 0,
+    }));
+  },
+
+  // Pause timer (for snooze or when browser loses focus)
+  pauseAwayTimer: async () => {
+    const state = await storage.get();
+    if (state.lastNonWorkFocusStart) {
+      const elapsed = Date.now() - state.lastNonWorkFocusStart;
+      await storage.set(prev => ({
+        ...prev,
+        awayFromWorkDuration: prev.awayFromWorkDuration + elapsed,
+        lastNonWorkFocusStart: null,
+      }));
+    }
+  },
+
+  // Reset timer (when returning to work)
+  resetAwayTimer: async () => {
+    await storage.set(prev => ({
+      ...prev,
+      lastNonWorkFocusStart: null,
+      awayFromWorkDuration: 0,
+    }));
+  },
+
+  // Get current away duration in milliseconds
+  getAwayDuration: async () => {
+    const state = await storage.get();
+    if (!state.lastNonWorkFocusStart) {
+      return state.awayFromWorkDuration;
+    }
+    return state.awayFromWorkDuration + (Date.now() - state.lastNonWorkFocusStart);
   },
 };
