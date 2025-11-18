@@ -111,16 +111,16 @@ export default function Overlay() {
             borderRadius: '24px',
             backgroundColor: 'rgba(255, 255, 255, 0.15)',
           }}>
-          <svg
-            style={{ width: '48px', height: '48px', color: 'white' }}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={1.5}>
+          <svg style={{ width: '48px', height: '48px' }} viewBox="0 0 24 24" fill="white">
+            <path d="M3 2h9c5.523 0 10 4.477 10 10s-4.477 10-10 10H3V2zm9 16c3.314 0 6-2.686 6-6s-2.686-6-6-6H7v12h5z" />
+            <circle cx="12" cy="12" r="4" fill="#dc2626" />
             <path
+              d="M12 9v3l2 2"
+              stroke="white"
+              strokeWidth="1.5"
+              fill="none"
               strokeLinecap="round"
               strokeLinejoin="round"
-              d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
             />
           </svg>
         </div>
