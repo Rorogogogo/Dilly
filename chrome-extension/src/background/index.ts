@@ -385,10 +385,10 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
     return;
   }
 
-  // Block entertainment sites - redirect to work URL
+  // Block entertainment sites - redirect to blocked page
   if (isEntertainmentUrl(url, state.entertainmentSites)) {
-    console.log('[Dilly] Blocked site detected, redirecting to work');
-    await chrome.tabs.update(tabId, { url: state.targetUrl });
+    const blockedPageUrl = chrome.runtime.getURL(`new-tab/index.html?blocked=${encodeURIComponent(url)}`);
+    await chrome.tabs.update(tabId, { url: blockedPageUrl });
   }
 });
 
