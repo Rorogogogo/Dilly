@@ -341,7 +341,20 @@ const OAUTH_DOMAINS = [
   'api.twitter.com',
 ];
 
-// Handle tab URL changes - redirect new tabs to work URL if nagger is active
+// Check if URL is an entertainment site
+const isEntertainmentUrl = (url: string, entertainmentSites: string[]): boolean => {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+    return entertainmentSites.some(site => {
+      const normalizedSite = site.toLowerCase().replace(/^www\./, '');
+      return hostname === normalizedSite || hostname.endsWith('.' + normalizedSite);
+    });
+  } catch {
+    return false;
+  }
+};
+
+// Handle tab URL changes - redirect new tabs and block entertainment sites
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
   // Only check when URL changes
   if (!changeInfo.url) return;
@@ -351,18 +364,12 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
   // Skip OAuth/authentication URLs
   const isOAuthUrl = OAUTH_DOMAINS.some(domain => url.includes(domain));
   if (isOAuthUrl) {
-    console.log('[Dilly] OAuth URL detected, skipping:', url);
-    return;
-  }
-
-  // Only redirect new tab pages
-  if (url !== 'chrome://newtab/' && url !== 'about:newtab') {
     return;
   }
 
   const state = await dillyStorage.get();
 
-  // Only redirect if nagger is active and we have a target URL
+  // Only act if nagger is active and we have a target URL
   if (!state.isNaggerActive || !state.targetUrl) {
     return;
   }
@@ -372,8 +379,17 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
     return;
   }
 
-  console.log('[Dilly] New tab detected, redirecting to work');
-  await chrome.tabs.update(tabId, { url: state.targetUrl });
+  // Redirect new tab pages to work
+  if (url === 'chrome://newtab/' || url === 'about:newtab') {
+    await chrome.tabs.update(tabId, { url: state.targetUrl });
+    return;
+  }
+
+  // Block entertainment sites - redirect to work URL
+  if (isEntertainmentUrl(url, state.entertainmentSites)) {
+    console.log('[Dilly] Blocked site detected, redirecting to work');
+    await chrome.tabs.update(tabId, { url: state.targetUrl });
+  }
 });
 
 // Initial setup
